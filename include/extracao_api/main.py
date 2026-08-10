@@ -1,10 +1,14 @@
 import requests
 import json
 import math
+from pathlib import Path
 
 url = "https://employability-portal.gupy.io/api/v1/jobs?"
 
 params = {"jobName": "dados"}
+
+BASE_DIR = Path(__file__).resolve().parent
+CAMINHO_ARQUIVO = BASE_DIR / "resultado_api.json"
 
 def extrair_dados():
     response = requests.get(url, params = params)
@@ -32,7 +36,7 @@ def extrair_dados():
 
 
 
-with open("/usr/local/airflow/include/extracao_api/resultado_api.json", "w", encoding="utf-8") as arquivo:
+with open(CAMINHO_ARQUIVO, "w", encoding="utf-8") as arquivo:
     arquivo.write("[\n")
 
     for i, data_offset in enumerate(extrair_dados()):
