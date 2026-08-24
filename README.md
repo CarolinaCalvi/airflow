@@ -1,105 +1,179 @@
-# airflow
+# astronomer_estudo
 
-Projeto de estudo com Astronomer/Airflow para criar, executar e testar DAGs localmente.
-
-O ambiente segue a estrutura padrao de um projeto criado com Astro CLI.
+Projeto de estudo com Astronomer/Airflow para orquestrar uma extracao da API da Gupy usando Docker e Google Cloud Storage.
 
 ## Objetivo
 
-Este repositorio reune exemplos simples de DAGs e uma primeira rotina de extracao de dados via API.
+A DAG `extracao_api` executa uma imagem Docker propria. O container faz todo o pipeline:
 
-## Estrutura do projeto
+1. consulta a API publica da Gupy buscando vagas relacionadas a `dados`;
+2. salva o JSON bruto diretamente no Cloud Storage;
+3. le o JSON bruto do Cloud Storage;
+4. transforma os dados para Parquet dentro do proprio container;
+5. salva o Parquet diretamente no Cloud Storage.
+
+O Airflow apenas orquestra a execucao do container. A transformacao JSON para Parquet nao roda no processo do Airflow.
+
+## Estrutura
 
 ```text
 .
-|-- dags/
-|   |-- dag_extracao_api.py      # DAG que executa o script de extracao da API
-|   |-- dag_hello_world.py       # DAG simples de Hello World
-|   `-- exampledag.py            # DAG exemplo do Astronomer
-|-- include/
+|-- airflow/
+|   |-- dags/
+|   |   |-- dag_extracao_api.py       # DAG que executa a imagem Docker
+|   |   |-- dag_hello_world.py
+|   |   `-- exampledag.py
+|   |-- keys/
+|   |   `-- airflow-projeto-4cddd5ef2c66.json
+|   |-- airflow_settings.yaml         # Conexao google_cloud_default
+|   |-- docker-compose.override.yml   # Monta docker.sock e keys no scheduler
+|   |-- Dockerfile                    # Imagem base do Astro Runtime
+|   |-- packages.txt
+|   `-- requirements.txt              # Dependencias do Airflow
+|-- src/
 |   `-- extracao_api/
-|       `-- main.py              # Script Python que consulta a API da Gupy
-|       `-- resultado_api.json   # Arquivo gerado com o resultado da extracao
-|-- plugins/                     # Plugins customizados do Airflow
-|-- tests/                       # Testes com pytest para validacao das DAGs
-|-- airflow_settings.yaml        # Connections, pools e variables para uso local
-|-- Dockerfile                   # Imagem base do Astro Runtime
-|-- packages.txt                 # Pacotes de sistema adicionais
-`-- requirements.txt             # Dependencias Python adicionais
+|       |-- Dockerfile                # Imagem extracao-api:latest
+|       |-- main.py                   # Extrai, salva JSON no GCS, transforma e salva Parquet no GCS
+|       `-- requirements.txt          # Dependencias da imagem de extracao
+`-- README.md
 ```
 
-## DAGs criadas
+## Fluxo Da DAG
 
-### `hello_world`
+A DAG tem uma task principal:
 
-DAG simples para validar a criacao de uma tarefa Python no Airflow.
+```python
+extrair_api_docker
+```
 
-### `extracao_api`
+Essa task usa `DockerOperator` para executar a imagem:
 
-Executa diariamente uma imagem Docker propria para extrair dados da API e transformar o resultado em Parquet.
+```text
+extracao-api:latest
+```
 
-O container consulta a API publica da Gupy procurando vagas relacionadas a `dados`, pagina os resultados e grava a resposta no arquivo `resultado_api.json`.
-Depois, transforma os dados em `resultado_api.parquet`.
-
-Os arquivos gerados ficam em um volume Docker nomeado, compartilhado entre o container executado pelo `DockerOperator` e o container do Airflow Scheduler.
-Depois disso, a DAG envia o JSON e o Parquet para o Google Cloud Storage.
-
-## Como executar localmente
-
-Pre-requisitos:
-
-- Docker;
-- Astro CLI instalado.
-
-Entre na pasta do projeto:
+O comando executado dentro do container e:
 
 ```bash
-cd airflow
+python /src/main.py
 ```
 
-Suba o ambiente local:
+A DAG passa para o container os caminhos de destino no Cloud Storage:
+
+```text
+raw/gupy/jobs/dt={{ ds }}/resultado_api.json
+staging/gupy/jobs/dt={{ ds }}/resultado_api.parquet
+```
+
+Assim, para uma execucao com `ds=2026-08-24`, os arquivos ficam em:
+
+```text
+gs://data-lake-estudo/raw/gupy/jobs/dt=2026-08-24/resultado_api.json
+gs://data-lake-estudo/staging/gupy/jobs/dt=2026-08-24/resultado_api.parquet
+```
+
+## Como O Docker Acessa O GCS
+
+O container recebe a chave de service account por volume:
+
+```text
+airflow/keys -> /keys
+```
+
+E usa a variavel:
+
+```text
+GOOGLE_APPLICATION_CREDENTIALS=/keys/airflow-projeto-4cddd5ef2c66.json
+```
+
+## Como O Airflow Acessa O Docker
+
+O arquivo `airflow/docker-compose.override.yml` monta o socket do Docker no scheduler:
+
+```yaml
+services:
+  scheduler:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./keys:/usr/local/airflow/keys:ro
+```
+
+Isso permite que o `DockerOperator` crie containers usando o Docker da maquina local.
+
+## Executando Localmente
+
+Entre na pasta do projeto Astro:
+
+```bash
+cd C:\Users\pcnot\Documents\vscode\estudos\astronomer_estudo\airflow
+```
+
+Suba ou reinicie o Airflow:
 
 ```bash
 astro dev start
 ```
 
-Crie a imagem Docker usada pelo `DockerOperator`:
+Se o ambiente ja estiver rodando:
 
 ```bash
-docker build -t extracao-api:latest include/extracao_api
+astro dev restart
 ```
 
-Depois que os containers iniciarem, acesse a interface do Airflow em:
+Acesse:
 
 ```text
 http://localhost:8080
 ```
 
-Credenciais padrao do ambiente local:
+Credenciais padrao:
 
 ```text
 Usuario: admin
 Senha: admin
 ```
 
-Para parar o ambiente:
+## Build Da Imagem De Extracao
+
+Sempre que alterar `src/extracao_api/main.py`, `Dockerfile` ou `requirements.txt`, reconstrua a imagem:
 
 ```bash
-astro dev stop
+docker build -t extracao-api:latest C:\Users\pcnot\Documents\vscode\estudos\astronomer_estudo\src\extracao_api
 ```
 
-Se alterar o `docker-compose.override.yml`, reinicie o ambiente:
+## Teste Manual Da Imagem
+
+Para testar a imagem fora do Airflow:
 
 ```bash
-astro dev restart
+docker run --rm ^
+  -v "C:\Users\pcnot\Documents\vscode\estudos\astronomer_estudo\src\extracao_api:/src" ^
+  -v "C:\Users\pcnot\Documents\vscode\estudos\astronomer_estudo\airflow\keys:/keys:ro" ^
+  -e GOOGLE_APPLICATION_CREDENTIALS="/keys/airflow-projeto-4cddd5ef2c66.json" ^
+  -e GCS_BUCKET="data-lake-estudo" ^
+  -e GCS_RAW_OBJECT="raw/gupy/jobs/dt=manual/resultado_api.json" ^
+  -e GCS_PARQUET_OBJECT="staging/gupy/jobs/dt=manual/resultado_api.parquet" ^
+  extracao-api:latest ^
+  python /src/main.py
 ```
 
-## Executando o script manualmente
+## Dependencias
 
-Tambem e possivel rodar o script de extracao diretamente com Python:
+Imagem de extracao:
 
-```bash
-python include/extracao_api/main.py
+```text
+requests
+google-cloud-storage
+pandas
+pyarrow
 ```
 
-Ao final da execucao, o arquivo `resultado_api.json` sera sobrescrito com os dados retornados pela API.
+Airflow:
+
+```text
+apache-airflow-providers-google
+apache-airflow-providers-docker
+requests
+pandas
+pyarrow
+```
