@@ -36,9 +36,13 @@ DAG simples para validar a criacao de uma tarefa Python no Airflow.
 
 ### `extracao_api`
 
-Executa diariamente o script `include/extracao_api/main.py`.
+Executa diariamente uma imagem Docker propria para extrair dados da API e transformar o resultado em Parquet.
 
-O script consulta a API publica da Gupy procurando vagas relacionadas a `dados`, pagina os resultados e grava a resposta no arquivo resultado_api.json
+O container consulta a API publica da Gupy procurando vagas relacionadas a `dados`, pagina os resultados e grava a resposta no arquivo `resultado_api.json`.
+Depois, transforma os dados em `resultado_api.parquet`.
+
+Os arquivos gerados ficam em um volume Docker nomeado, compartilhado entre o container executado pelo `DockerOperator` e o container do Airflow Scheduler.
+Depois disso, a DAG envia o JSON e o Parquet para o Google Cloud Storage.
 
 ## Como executar localmente
 
@@ -59,6 +63,12 @@ Suba o ambiente local:
 astro dev start
 ```
 
+Crie a imagem Docker usada pelo `DockerOperator`:
+
+```bash
+docker build -t extracao-api:latest include/extracao_api
+```
+
 Depois que os containers iniciarem, acesse a interface do Airflow em:
 
 ```text
@@ -76,6 +86,12 @@ Para parar o ambiente:
 
 ```bash
 astro dev stop
+```
+
+Se alterar o `docker-compose.override.yml`, reinicie o ambiente:
+
+```bash
+astro dev restart
 ```
 
 ## Executando o script manualmente
