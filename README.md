@@ -24,7 +24,7 @@ O Airflow apenas orquestra a execucao do container. A transformacao JSON para Pa
 |   |   |-- dag_hello_world.py
 |   |   `-- exampledag.py
 |   |-- keys/
-|   |   `-- airflow-projeto-4cddd5ef2c66.json
+|   |   `-- sua-chave-service-account.json
 |   |-- airflow_settings.yaml         # Conexao google_cloud_default
 |   |-- docker-compose.override.yml   # Monta docker.sock e keys no scheduler
 |   |-- Dockerfile                    # Imagem base do Astro Runtime
@@ -83,7 +83,7 @@ airflow/keys -> /keys
 E usa a variavel:
 
 ```text
-GOOGLE_APPLICATION_CREDENTIALS=/keys/airflow-projeto-4cddd5ef2c66.json
+GOOGLE_APPLICATION_CREDENTIALS=/keys/sua-chave-service-account.json
 ```
 
 ## Como O Airflow Acessa O Docker
@@ -104,8 +104,8 @@ Isso permite que o `DockerOperator` crie containers usando o Docker da maquina l
 
 Entre na pasta do projeto Astro:
 
-```bash
-cd C:\Users\pcnot\Documents\vscode\estudos\astronomer_estudo\airflow
+```powershell
+cd .\airflow
 ```
 
 Suba ou reinicie o Airflow:
@@ -123,7 +123,7 @@ astro dev restart
 Acesse:
 
 ```text
-http://localhost:8080
+Interface local do Airflow exibida pelo Astro
 ```
 
 Credenciais padrao:
@@ -137,23 +137,23 @@ Senha: admin
 
 Sempre que alterar `src/extracao_api/main.py`, `Dockerfile` ou `requirements.txt`, reconstrua a imagem:
 
-```bash
-docker build -t extracao-api:latest C:\Users\pcnot\Documents\vscode\estudos\astronomer_estudo\src\extracao_api
+```powershell
+docker build -t extracao-api:latest .\src\extracao_api
 ```
 
 ## Teste Manual Da Imagem
 
 Para testar a imagem fora do Airflow:
 
-```bash
-docker run --rm ^
-  -v "C:\Users\pcnot\Documents\vscode\estudos\astronomer_estudo\src\extracao_api:/src" ^
-  -v "C:\Users\pcnot\Documents\vscode\estudos\astronomer_estudo\airflow\keys:/keys:ro" ^
-  -e GOOGLE_APPLICATION_CREDENTIALS="/keys/airflow-projeto-4cddd5ef2c66.json" ^
-  -e GCS_BUCKET="data-lake-estudo" ^
-  -e GCS_RAW_OBJECT="raw/gupy/jobs/dt=manual/resultado_api.json" ^
-  -e GCS_PARQUET_OBJECT="staging/gupy/jobs/dt=manual/resultado_api.parquet" ^
-  extracao-api:latest ^
+```powershell
+docker run --rm `
+  -v "${PWD}\src\extracao_api:/src" `
+  -v "${PWD}\airflow\keys:/keys:ro" `
+  -e GOOGLE_APPLICATION_CREDENTIALS="/keys/sua-chave-service-account.json" `
+  -e GCS_BUCKET="data-lake-estudo" `
+  -e GCS_RAW_OBJECT="raw/gupy/jobs/dt=manual/resultado_api.json" `
+  -e GCS_PARQUET_OBJECT="staging/gupy/jobs/dt=manual/resultado_api.parquet" `
+  extracao-api:latest `
   python /src/main.py
 ```
 
